@@ -33,7 +33,7 @@ adminlist=str(config.get('telegram','admin_chat_id')).split(',')
 mount_point=config.get('openshift','persistent_mount_point')
 gmaps = googlemaps.Client(key=GOOGLE_MAP_KEY)
 
-conn = sqlite3.connect(mount_point+mount_point+'hk_bot.db')
+conn = sqlite3.connect(mount_point+'hk_bot.db')
 create_table_request_list = [
     'CREATE TABLE location(id TEXT PRIMARY KEY,country TEXT,city TEXT)',
     'CREATE TABLE subscribers(id TEXT PRIMARY KEY,country TEXT,city TEXT,coun1 int DEFAULT 0,cit1 int DEFAULT 0)',
@@ -46,17 +46,17 @@ for create_table_request in create_table_request_list:
 conn.commit()
 conn.close()
 
-REC_LOC,UPCM_2,GH_LIST,GET_CITY,GET_COUNTRY,UPCM_1,SET_LOC,SET_COUNTRY,SET_CITY,SUBS_2,UNSUB_1=range(11)
+REC_LOC,UPCM_2,GH_LIST,GET_CITY,DB,BDC,GET_COUNTRY,UPCM_1,SET_LOC,SET_COUNTRY,SET_CITY,SUBS_2,UNSUB_1=range(13)
 
 timeouts = flood_protection.Spam_settings()
 
 # START OF CONVERSATION HANDLER TO UNSUBSCRIBE
 @timeouts.wrapper
-def check_unsubscriber(bot,update,user_data):
+def check_unsubscriber(bot,update,user_data,args):
     if (update.message.chat_id < 0):
         print(bot.get_chat_administrators(update.message.chat_id))
         if bot.get_chat_member(user_id=update.message.from_user.id,chat_id=update.message.chat_id) in bot.get_chat_administrators(update.message.chat_id):
-            conn = sqlite3.connect(mount_point+mount_point+'hk_bot.db')
+            conn = sqlite3.connect(mount_point+'hk_bot.db')
             c = conn.cursor()
             c.execute('SELECT id FROM subscribers WHERE id=(?)', (str(update.message.chat_id),))
             if c.fetchone():
@@ -105,7 +105,7 @@ def unsubscribe(bot,update,user_data):
 
 # START OF CONVERSATION HANDLER TO SUBSCRIBE
 @timeouts.wrapper
-def check_subscriber(bot,update,user_data):
+def check_subscriber(bot,update,user_data,args):
     if(update.message.chat_id<0):
         if bot.get_chat_member(user_id=update.message.from_user.id,chat_id=update.message.chat_id) in bot.get_chat_administrators(update.message.chat_id):
             update.message.reply_text("As this is a group I will require your location to set as the groups location")
@@ -127,7 +127,7 @@ def check_subscriber(bot,update,user_data):
                 keyboard = [[InlineKeyboardButton("Country", callback_data='country4'),
                              InlineKeyboardButton("City", callback_data='city4')]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                update.message.reply_text('Get a list of hackathons every month from your', reply_markup=reply_markup)
+                update.message.reply_text('Get a list of hackathons every week from your', reply_markup=reply_markup)
                 return SUBS_2
         else:
             update.message.reply_text('I am sorry. You dont have permission to perform this operation')
@@ -148,7 +148,7 @@ def check_subscriber(bot,update,user_data):
             keyboard = [[InlineKeyboardButton("Country", callback_data='country4'),
                          InlineKeyboardButton("City", callback_data='city4')]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            update.message.reply_text('Get a list of hackathons every month from your', reply_markup=reply_markup)
+            update.message.reply_text('Get a list of hackathons every week from your', reply_markup=reply_markup)
             return SUBS_2
 
 def subscribe(bot,update,user_data):
@@ -164,7 +164,7 @@ def subscribe(bot,update,user_data):
         if c.rowcount == 0:
             bot.edit_message_text("Already subscribed. Kindly unsubscribe using /unsubscribe and try again",chat_id=query.message.chat_id,message_id=query.message.message_id)
         else:
-            bot.edit_message_text("Subscribed :) . I will send upcoming hackathons every month",
+            bot.edit_message_text("Subscribed :) . I will send upcoming hackathons every week",
                                   chat_id=query.message.chat_id, message_id=query.message.message_id)
         conn.commit()
         c.close()
@@ -177,7 +177,7 @@ def subscribe(bot,update,user_data):
         if c.rowcount == 0:
             bot.edit_message_text("Already subscribed. Kindly unsubscribe using /unsubscribe and try again",chat_id=query.message.chat_id,message_id=query.message.message_id)
         else:
-            bot.edit_message_text("Subscribed :) . I will send upcoming hackathons every month",
+            bot.edit_message_text("Subscribed :) . I will send upcoming hackathons every week",
                                   chat_id=query.message.chat_id, message_id=query.message.message_id)
         conn.commit()
         c.close()
@@ -188,7 +188,7 @@ def subscribe(bot,update,user_data):
 # FUNCTION TO SEND DATA TO SUBSCRIBERS
 sched = BackgroundScheduler()
 
-@sched.scheduled_job('cron',day=1)
+@sched.scheduled_job('cron',day_of_week='sun')
 def subs_sender():
     conn = sqlite3.connect(mount_point+'hk_bot.db')
     c = conn.cursor()
@@ -294,7 +294,7 @@ def paginate_and_send1(bot,to_send,chat_id):
         conn.close()
 
 @timeouts.wrapper
-def set_location(bot,update,user_data):
+def set_location(bot,update,user_data,args):
     location_key = KeyboardButton(text="send location", request_location=True)
     manual_key = KeyboardButton(text="set manually")
     custom_keyboard = [[location_key, manual_key]]
@@ -366,7 +366,7 @@ def set_city(bot,update,user_data):
     return ConversationHandler.END
 
 @timeouts.wrapper
-def upcoming_menu1(bot,update,user_data):
+def upcoming_menu1(bot,update,user_data,args):
     conn=sqlite3.connect(mount_point+'hk_bot.db')
     c=conn.cursor()
     c.execute('SELECT country,city FROM location WHERE id=(?)',(str(update.message.from_user.id),))
@@ -389,7 +389,7 @@ def upcoming_menu1(bot,update,user_data):
         keyboard = [[InlineKeyboardButton("Country", callback_data='country3'),
                      InlineKeyboardButton("City", callback_data='city3')]]
         reply_markup=InlineKeyboardMarkup(keyboard)
-        update.message.reply_text('Get a list of hackathons in your', reply_markup=reply_markup)
+        update.message.reply_text('Get a list of first 10 upcoming hackathons in your', reply_markup=reply_markup)
         return UPCM_2
 
 def recieve_location(bot,update,user_data):
@@ -422,7 +422,7 @@ def recieve_location(bot,update,user_data):
             keyboard = [[InlineKeyboardButton("Country", callback_data='country3'),
                          InlineKeyboardButton("City", callback_data='city3')]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            update.message.reply_text('Get a list of hackathons in your', reply_markup=reply_markup)
+            update.message.reply_text('Get a list of first 10 upcoming hackathons in your', reply_markup=reply_markup)
             return UPCM_2
         except:
             update.message.reply_text('Sorry your location is not valid',reply_markup=ReplyKeyboardRemove())
@@ -456,7 +456,7 @@ def get_city(bot,update,user_data):
     keyboard = [[InlineKeyboardButton("Country", callback_data='country3'),
                  InlineKeyboardButton("City", callback_data='city3')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Get a list of hackathons in your', reply_markup=reply_markup)
+    update.message.reply_text('Get a list of first 10 upcoming hackathons in your', reply_markup=reply_markup)
     return UPCM_2
 
 
@@ -473,7 +473,6 @@ def upcoming_menu2(bot,update,user_data):
         fetcher(url, bot, query)
     user_data.clear()
     return ConversationHandler.END
-
 
 
 def fetcher(url,bot,query):
@@ -528,24 +527,24 @@ def format_message_row(row_list,index):
     return {'text':str(index)+'. '+row+'\n','length':len(str(index)+'. '+row+'\n')}
 
 @timeouts.wrapper
-def start(bot, update,args,user_data):
+def start(bot, update,user_data,args):
     if 'set_location' in args:
         return set_location(bot,update,user_data)
     else:
         update.message.reply_text("Welcome\nI can help you in finding upcoming hackathons near you\nUse command /upcoming to get upcoming hackathons\n/set_location to set your location.\n/subscribe to get list of upcoming hackathons"
-                                  " every two weeks\nYou can use /cancel any time to cancel operation\nTo see all the commands use /help"
-                                  "\n\nORIGINAL CREATOR @gotham13121997\n\nORIGINAL SOURCE CODE ")
+                                  " every week\nYou can use /cancel any time to cancel operation\nTo see all the commands use /help"
+                                  "\n\nORIGINAL CREATOR @gotham13121997\n\nORIGINAL SOURCE CODE \nhttps://github.com/Gotham13121997/HACKATHON-BOT")
         return ConversationHandler.END
 
 @timeouts.wrapper
-def help(bot, update):
+def help(bot, update,user_data,args):
     update.message.reply_text('/upcoming -> Get a list of upcoming hackathons\n'
                               '/set_location -> Set your location\n'
-                              '/subscribe -> Get upcoming hacakthons every month\n'
+                              '/subscribe -> Get upcoming hacakthons every week\n'
                               '/unsubscribe -> Unsubscribe from the above\n'
                               '/cancel -> Cancel operation')
 @timeouts.wrapper
-def cancel(bot, update, user_data):
+def cancel(bot, update, user_data,args):
     update.message.reply_text('Cancelled',reply_markup=ReplyKeyboardRemove())
     user_data.clear()
     return ConversationHandler.END
@@ -557,7 +556,7 @@ def error(bot, update, error):
 # START OF ADMIN COMMANDS
 # START OF ADMIN CONVERSATION HANDLER TO BROADCAST MESSAGE
 @timeouts.wrapper
-def broadcast(bot,update):
+def broadcast(bot,update,user_data,args):
     if not str(update.message.chat_id) in adminlist:
         update.message.reply_text("sorry you are not an admin")
         return ConversationHandler.END
@@ -583,7 +582,7 @@ def broadcast_message(bot,update):
 
 # START OF ADMIN CONVERSATION HANDLER TO REPLACE THE DATABASE
 @timeouts.wrapper
-def getDb(bot, update):
+def getDb(bot, update,user_data,args):
     if not str(update.message.chat_id) in adminlist:
         update.message.reply_text("sorry you are not an admin")
         return ConversationHandler.END
@@ -600,7 +599,7 @@ def db(bot, update):
 # END OF ADMIN CONVERSATION HANDLER TO REPLACE THE DATABASE
 
 @timeouts.wrapper
-def givememydb(bot, update):
+def givememydb(bot, update,user_data,args):
     if not str(update.message.chat_id) in adminlist:
         update.message.reply_text("sorry you are not an admin")
         return
@@ -621,7 +620,7 @@ def setup(webhook_url=None):
         bot = updater.bot
         dp = updater.dispatcher
         conv_handler1 = ConversationHandler(
-            entry_points=[CommandHandler('upcoming',upcoming_menu1,pass_user_data=True)],
+            entry_points=[CommandHandler('upcoming',upcoming_menu1,pass_user_data=True,pass_args=True)],
             allow_reentry=True,
             states={
                 REC_LOC: [MessageHandler(Filters.location|Filters.text,recieve_location,pass_user_data=True)],
@@ -629,11 +628,11 @@ def setup(webhook_url=None):
                 GET_COUNTRY:[MessageHandler(Filters.text,get_country,pass_user_data=True)],
                 GET_CITY:[MessageHandler(Filters.text,get_city,pass_user_data=True)]
             },
-            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True, pass_args=True)]
         )
 
         conv_handler2=ConversationHandler(
-            entry_points=[CommandHandler('set_location', set_location, pass_user_data=True),
+            entry_points=[CommandHandler('set_location', set_location, pass_user_data=True,pass_args=True),
                           CommandHandler("start", start, pass_args=True, pass_user_data=True)],
             allow_reentry=True,
             states={
@@ -641,43 +640,43 @@ def setup(webhook_url=None):
                 SET_COUNTRY: [MessageHandler(Filters.text, set_country, pass_user_data=True)],
                 SET_CITY: [MessageHandler(Filters.text, set_city, pass_user_data=True)]
             },
-            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True, pass_args=True)]
         )
         conv_handler3 = ConversationHandler(
-            entry_points=[CommandHandler('subscribe',check_subscriber, pass_user_data=True)],
+            entry_points=[CommandHandler('subscribe',check_subscriber, pass_user_data=True, pass_args=True)],
             allow_reentry=True,
             states={
                 SUBS_2: [CallbackQueryHandler(subscribe, pattern=r'\w*4\b', pass_user_data=True)],
             },
-            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True, pass_args=True)]
         )
         conv_handler4 = ConversationHandler(
-            entry_points=[CommandHandler('unsubscribe', check_unsubscriber, pass_user_data=True)],
+            entry_points=[CommandHandler('unsubscribe', check_unsubscriber, pass_user_data=True,pass_args=True)],
             allow_reentry=True,
             states={
                 UNSUB_1: [CallbackQueryHandler(unsubscribe, pattern=r'\w*5\b', pass_user_data=True)],
             },
-            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True, pass_args=True)]
         )
         # ADMIN CONVERSATION HANDLER TO BROADCAST MESSAGES
         conv_handler5 = ConversationHandler(
-            entry_points=[CommandHandler('broadcast', broadcast)],
+            entry_points=[CommandHandler('broadcast', broadcast,pass_args=True,pass_user_data=True)],
             allow_reentry=True,
             states={
                 BDC: [MessageHandler(Filters.text, broadcast_message)]
             },
 
-            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True, pass_args=True)]
         )
         # CONVERSATION HANDLER FOR REPLACING SQLITE DATABASE
         conv_handler6 = ConversationHandler(
-            entry_points=[CommandHandler('senddb', getDb)],
+            entry_points=[CommandHandler('senddb', getDb,pass_user_data=True,pass_args=True)],
             allow_reentry=True,
             states={
                 DB: [MessageHandler(Filters.document, db)]
             },
 
-            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True, pass_args=True)]
         )
         dp.add_handler(conv_handler1)
         dp.add_handler(conv_handler2)
@@ -685,8 +684,8 @@ def setup(webhook_url=None):
         dp.add_handler(conv_handler4)
         dp.add_handler(conv_handler5)
         dp.add_handler(conv_handler6)
-        dp.add_handler(CommandHandler('givememydb', givememydb))
-        dp.add_handler(CommandHandler('help',help))
+        dp.add_handler(CommandHandler('givememydb', givememydb,pass_args=True,pass_user_data=True))
+        dp.add_handler(CommandHandler('help',help,pass_user_data=True,pass_args=True))
         # log all errors
         dp.add_error_handler(error)
     # Add your handlers here
