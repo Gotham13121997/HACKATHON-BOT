@@ -207,6 +207,8 @@ def subs_sender():
             fetcher1(url=url, chat_id=a)
         time.sleep(1)
 
+sched.start()
+
 def getRow(card_holder):
     title = ''
     url = ''
