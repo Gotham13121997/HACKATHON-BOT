@@ -249,7 +249,7 @@ def getRow(card_holder):
         prize_name_holder = prize_holder.find('div', {"class", "ht-eb-card__prize__name"})
         if prize_name_holder is not None:
             prize_name = prize_name_holder.text
-    return [title, description, url, location, start_date, end_date, prize_title, prize_name]
+    return [title, description, url, location, start_date,end_date,tags, prize_title, prize_name]
 
 def fetcher1(url,chat_id):
     bot=Bot(TOKEN)
