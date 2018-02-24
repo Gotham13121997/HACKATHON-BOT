@@ -15,6 +15,7 @@ from threading import Thread
 import urllib.error
 import urllib.parse
 import urllib.request
+import flood_protection
 from telegram import Bot,KeyboardButton,ForceReply,ChatAction
 from telegram.ext import Dispatcher, CommandHandler, ConversationHandler, MessageHandler,Updater,Filters,CallbackQueryHandler
 from configparser import ConfigParser
@@ -28,6 +29,7 @@ config.read('config.ini')
 TOKEN = config.get('telegram','bot_token')
 GOOGLE_MAP_KEY=config.get('google-geocode','api_key')
 BOT_URL=config.get('telegram','bot_url')
+adminlist=str(config.get('telegram','admin_chat_id')).split(',')
 mount_point=config.get('openshift','persistent_mount_point')
 gmaps = googlemaps.Client(key=GOOGLE_MAP_KEY)
 
@@ -46,7 +48,10 @@ conn.close()
 
 REC_LOC,UPCM_2,GH_LIST,GET_CITY,GET_COUNTRY,UPCM_1,SET_LOC,SET_COUNTRY,SET_CITY,SUBS_2,UNSUB_1=range(11)
 
+timeouts = flood_protection.Spam_settings()
+
 # START OF CONVERSATION HANDLER TO UNSUBSCRIBE
+@timeouts.wrapper
 def check_unsubscriber(bot,update,user_data):
     if (update.message.chat_id < 0):
         print(bot.get_chat_administrators(update.message.chat_id))
@@ -99,6 +104,7 @@ def unsubscribe(bot,update,user_data):
 # END OF CONVERSATION HANDLER TO UNSUBSCRIBE
 
 # START OF CONVERSATION HANDLER TO SUBSCRIBE
+@timeouts.wrapper
 def check_subscriber(bot,update,user_data):
     if(update.message.chat_id<0):
         if bot.get_chat_member(user_id=update.message.from_user.id,chat_id=update.message.chat_id) in bot.get_chat_administrators(update.message.chat_id):
@@ -287,6 +293,7 @@ def paginate_and_send1(bot,to_send,chat_id):
         c.close()
         conn.close()
 
+@timeouts.wrapper
 def set_location(bot,update,user_data):
     location_key = KeyboardButton(text="send location", request_location=True)
     manual_key = KeyboardButton(text="set manually")
@@ -358,6 +365,7 @@ def set_city(bot,update,user_data):
     update.message.reply_text('Location set\nCountry=' + country + "\nCity=" + city)
     return ConversationHandler.END
 
+@timeouts.wrapper
 def upcoming_menu1(bot,update,user_data):
     conn=sqlite3.connect(mount_point+'hk_bot.db')
     c=conn.cursor()
@@ -519,7 +527,7 @@ def format_message_row(row_list,index):
             row=row+item+"\n"
     return {'text':str(index)+'. '+row+'\n','length':len(str(index)+'. '+row+'\n')}
 
-
+@timeouts.wrapper
 def start(bot, update,args,user_data):
     if 'set_location' in args:
         return set_location(bot,update,user_data)
@@ -529,21 +537,75 @@ def start(bot, update,args,user_data):
                                   "\n\nORIGINAL CREATOR @gotham13121997\n\nORIGINAL SOURCE CODE ")
         return ConversationHandler.END
 
-
+@timeouts.wrapper
 def help(bot, update):
     update.message.reply_text('/upcoming -> Get a list of upcoming hackathons\n'
                               '/set_location -> Set your location\n'
                               '/subscribe -> Get upcoming hacakthons every month\n'
                               '/unsubscribe -> Unsubscribe from the above\n'
                               '/cancel -> Cancel operation')
-
+@timeouts.wrapper
 def cancel(bot, update, user_data):
     update.message.reply_text('Cancelled',reply_markup=ReplyKeyboardRemove())
     user_data.clear()
     return ConversationHandler.END
 
+
 def error(bot, update, error):
     logger.warning('Update "%s" caused error "%s"' % (update, error))
+
+# START OF ADMIN COMMANDS
+# START OF ADMIN CONVERSATION HANDLER TO BROADCAST MESSAGE
+@timeouts.wrapper
+def broadcast(bot,update):
+    if not str(update.message.chat_id) in adminlist:
+        update.message.reply_text("sorry you are not an admin")
+        return ConversationHandler.END
+    update.message.reply_text("Send your message")
+    return BDC
+
+def broadcast_message(bot,update):
+    message = update.message.text
+    conn = sqlite3.connect(mount_point + 'hk_bot.db')
+    c = conn.cursor()
+    c.execute('select id from location union select id from subscribers')
+    for row in c.fetchall():
+        try:
+            bot.send_message(text=message,chat_id=row[0])
+        except:
+            pass
+        time.sleep(1)
+    c.close()
+    conn.close()
+    return ConversationHandler.END
+# END OF ADMIN CONVERSATION HANDLER TO BROADCAST MESSAGE
+
+
+# START OF ADMIN CONVERSATION HANDLER TO REPLACE THE DATABASE
+@timeouts.wrapper
+def getDb(bot, update):
+    if not str(update.message.chat_id) in adminlist:
+        update.message.reply_text("sorry you are not an admin")
+        return ConversationHandler.END
+    update.message.reply_text("send your sqlite database")
+    return DB
+
+
+def db(bot, update):
+    file_id = update.message.document.file_id
+    newFile = bot.get_file(file_id)
+    newFile.download(mount_point+'hk_bot.db')
+    update.message.reply_text("saved")
+    return ConversationHandler.END
+# END OF ADMIN CONVERSATION HANDLER TO REPLACE THE DATABASE
+
+@timeouts.wrapper
+def givememydb(bot, update):
+    if not str(update.message.chat_id) in adminlist:
+        update.message.reply_text("sorry you are not an admin")
+        return
+    bot.send_document(chat_id=update.message.chat_id, document=open(mount_point+'hk_bot.db', 'rb'))
+
 
 
 # Write your handlers here
@@ -597,10 +659,33 @@ def setup(webhook_url=None):
             },
             fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
         )
+        # ADMIN CONVERSATION HANDLER TO BROADCAST MESSAGES
+        conv_handler5 = ConversationHandler(
+            entry_points=[CommandHandler('broadcast', broadcast)],
+            allow_reentry=True,
+            states={
+                BDC: [MessageHandler(Filters.text, broadcast_message)]
+            },
+
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+        )
+        # CONVERSATION HANDLER FOR REPLACING SQLITE DATABASE
+        conv_handler6 = ConversationHandler(
+            entry_points=[CommandHandler('senddb', getDb)],
+            allow_reentry=True,
+            states={
+                DB: [MessageHandler(Filters.document, db)]
+            },
+
+            fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+        )
         dp.add_handler(conv_handler1)
         dp.add_handler(conv_handler2)
         dp.add_handler(conv_handler3)
         dp.add_handler(conv_handler4)
+        dp.add_handler(conv_handler5)
+        dp.add_handler(conv_handler6)
+        dp.add_handler(CommandHandler('givememydb', givememydb))
         dp.add_handler(CommandHandler('help',help))
         # log all errors
         dp.add_error_handler(error)
