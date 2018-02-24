@@ -326,6 +326,7 @@ def recieve_set_loc(bot,update,user_data):
                           (country, city, str(update.message.from_user.id)))
             c.execute("UPDATE subscribers SET country=(?),city=(?) WHERE id = (?) ",
                       (country, city, str(update.message.from_user.id)))
+            conn.commit()
             c.close()
             conn.close()
             reply_markup = ReplyKeyboardRemove()
@@ -413,6 +414,8 @@ def recieve_location(bot,update,user_data):
             if c.rowcount == 0:
                 c.execute("UPDATE location SET country=(?),city=(?) WHERE id = (?) ",
                           (country, city, str(update.message.from_user.id)))
+            c.execute("UPDATE subscribers SET country=(?),city=(?) WHERE id = (?)",
+                      (country, city, str(update.message.from_user.id)))
             conn.commit()
             c.close()
             conn.close()
@@ -450,6 +453,7 @@ def get_city(bot,update,user_data):
     if c.rowcount == 0:
         c.execute("UPDATE location SET country=(?),city=(?) WHERE id = (?) ",
                   (country, city, str(update.message.from_user.id)))
+    c.execute("UPDATE subscribers SET country=(?),city=(?) WHERE id = (?)",(country, city, str(update.message.from_user.id)))
     conn.commit()
     c.close()
     conn.close()
