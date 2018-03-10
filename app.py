@@ -50,6 +50,181 @@ REC_LOC,UPCM_2,GH_LIST,GET_CITY,DB,BDC,GET_COUNTRY,UPCM_1,SET_LOC,SET_COUNTRY,SE
 
 timeouts = flood_protection.Spam_settings()
 
+# UTILITY FUNCTIONS ...............................................................................
+
+# FUNCTION TO SEND UPCOMING HACKATHONS TO SUBSCRIBERS
+sched = BackgroundScheduler()
+@sched.scheduled_job('cron',day_of_week='sun')
+def subs_sender():
+    conn = sqlite3.connect(mount_point+'hk_bot.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM subscribers')
+    for row in c.fetchall():
+        a=row[0]
+        country=row[1]
+        city=row[2]
+        coun1=row[3]
+        cit1=row[4]
+        if coun1 == 1:
+            url = 'https://www.hackathon.com/country/' + country
+            fetcher_for_subscriber(url=url,chat_id=a)
+        elif cit1 == 1:
+            url = 'https://www.hackathon.com/city/' + country + '/' + city
+            fetcher_for_subscriber(url=url, chat_id=a)
+        time.sleep(1)
+sched.start()
+
+# FUNCTION TO SCRAPE THE WEBSITE
+def fetcher(url,bot,query):
+    try:
+        gcontext = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+        url1 = urllib.request.Request(url=url,
+                                      headers={'Content-Type': 'application/json', 'User-agent': 'Mozilla/5.0'})
+        rawData = urllib.request.urlopen(url=url1, context=gcontext).read().decode('utf-8')
+        soup = bs.BeautifulSoup(rawData, 'html5lib')
+        to_send = []
+        index = 1
+        for card_holder in soup.findAll('div', {"class": "small-12 medium-6 large-12 column"}):
+            formatted_row = format_message_row(getRow(card_holder), index)
+            to_send.append(formatted_row)
+            index = index + 1
+        if len(to_send) == 0:
+            bot.edit_message_text(text="Sorry I could not find any hackathons", chat_id=query.message.chat_id,
+                                  message_id=query.message.message_id)
+        else:
+            paginate_and_send(bot, query, to_send)
+    except:
+        bot.edit_message_text(text="Sorry I could not find any hackathons", chat_id=query.message.chat_id,
+                              message_id=query.message.message_id)
+
+
+# SAME THING FOR SUBSCRIBERS
+def fetcher_for_subscriber(url,chat_id):
+    bot=Bot(TOKEN)
+    try:
+        gcontext = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+        url1 = urllib.request.Request(url=url,
+                                      headers={'Content-Type': 'application/json', 'User-agent': 'Mozilla/5.0'})
+        rawData = urllib.request.urlopen(url=url1, context=gcontext).read().decode('utf-8')
+        soup = bs.BeautifulSoup(rawData, 'html5lib')
+        to_send = []
+        index = 1
+        for card_holder in soup.findAll('div', {"class": "small-12 medium-6 large-12 column"}):
+            formatted_row = format_message_row(getRow(card_holder)
+                , index)
+            to_send.append(formatted_row)
+            index = index + 1
+        if len(to_send) == 0:
+            return
+        else:
+            paginate_and_send_to_subscriber(bot,to_send,chat_id)
+    except:
+        return
+
+
+# EXTRACT THE REQUIRED INFORMATION FROM SCRAPED TAGS
+def getRow(card_holder):
+    title = ''
+    url = ''
+    title_holder = card_holder.find('a', {"class": "ht-eb-card__title"})
+    if title_holder is not None:
+        title = title_holder.text
+        url = title_holder['href']
+    start_card = card_holder.find('div', {"class": "date date--start idea-ht-calendar-light"})
+    start_date = ''
+    if start_card is not None:
+        for components in start_card:
+            start_date = start_date + components.text + ' '
+    end_card = card_holder.find('div', {"class": "date date--end idea-ht-calendar-light"})
+    end_date = ''
+    if end_card is not None:
+        for components in end_card:
+            end_date = end_date + components.text + ' '
+    tags_holder = card_holder.find('div', {"class": "ht-card-tags"})
+    tags = ''
+    if tags_holder is not None:
+        for tag in tags_holder:
+            tags = tags + tag.text + ' '
+    description = ''
+    description_holder = card_holder.find('div', {"class": "ht-eb-card__description"})
+    if not description_holder is None:
+        description = description_holder.text
+    location = ''
+    location_holder = card_holder.find('span', {"class": "ht-eb-card__location__place"})
+    if not location_holder is None:
+        location = location_holder.text
+    prize_title = ''
+    prize_name = ''
+    prize_holder = card_holder.find('div', {"class": "ht-eb-card__prize__container"})
+    if prize_holder is not None:
+        prize_title_holder = prize_holder.find('div', {"class", "ht-eb-card__prize__title"})
+        if prize_title_holder is not None:
+            prize_title = prize_title_holder.text
+        prize_name_holder = prize_holder.find('div', {"class", "ht-eb-card__prize__name"})
+        if prize_name_holder is not None:
+            prize_name = prize_name_holder.text
+    return [title, description, url, location, start_date,end_date,tags, prize_title, prize_name]
+
+# FORMAT TH EXTRACTED TEXT TO SEND TO USER
+def format_message_row(row_list,index):
+    row=''
+    for item in row_list:
+        if not item=='':
+            row=row+item+"\n"
+    return {'text':str(index)+'. '+row+'\n','length':len(str(index)+'. '+row+'\n')}
+
+
+# FUNCTION TO HANDLE PAGINATION AND SENDING TEXT TO USER
+def paginate_and_send(bot,query,to_send):
+    first=True
+    tot_len=0
+    message=''
+    for row in to_send:
+        if tot_len>=2500:
+            if first:
+                bot.edit_message_text(text=message,chat_id=query.message.chat_id,message_id=query.message.message_id,disable_web_page_preview=True)
+                first=False
+            else:
+                bot.send_message(text=message,chat_id=query.message.chat_id,disable_web_page_preview=True)
+            tot_len=0
+            message=''
+        message=message+row['text']
+        tot_len=tot_len+row['length']
+    if message !='':
+        if first:
+            bot.edit_message_text(text=message, chat_id=query.message.chat_id, message_id=query.message.message_id,disable_web_page_preview=True)
+        else:
+            bot.send_message(text=message, chat_id=query.message.chat_id,disable_web_page_preview=True)
+
+
+# SAME AS ABOVE BUT FOR SUBSCRIBERS
+def paginate_and_send_to_subscriber(bot,to_send,chat_id):
+    try:
+        tot_len = 0
+        message = ''
+        for row in to_send:
+            if tot_len >= 2500:
+                bot.send_message(text=message, chat_id=chat_id, disable_web_page_preview=True)
+                tot_len = 0
+                message = ''
+            message = message + row['text']
+            tot_len = tot_len + row['length']
+        if message != '':
+            bot.send_message(text=message, chat_id=chat_id, disable_web_page_preview=True)
+    except Unauthorized:
+        conn = sqlite3.connect(mount_point+'hk_bot.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM subscribers WHERE id = (?)", (chat_id,))
+        conn.commit()
+        c.close()
+        conn.close()
+
+
+#................................................................................................
+
+
+
+
 # START OF CONVERSATION HANDLER TO UNSUBSCRIBE
 @timeouts.wrapper
 def check_unsubscriber(bot,update,user_data,args):
@@ -185,116 +360,10 @@ def subscribe(bot,update,user_data):
     return ConversationHandler.END
 # END OF CONVERSATION HANDLER TO SUBSCRIBE
 
-# FUNCTION TO SEND DATA TO SUBSCRIBERS
-sched = BackgroundScheduler()
-
-@sched.scheduled_job('cron',day_of_week='sun')
-def subs_sender():
-    conn = sqlite3.connect(mount_point+'hk_bot.db')
-    c = conn.cursor()
-    c.execute('SELECT * FROM subscribers')
-    for row in c.fetchall():
-        a=row[0]
-        country=row[1]
-        city=row[2]
-        coun1=row[3]
-        cit1=row[4]
-        if coun1 == 1:
-            url = 'https://www.hackathon.com/country/' + country
-            fetcher1(url=url,chat_id=a)
-        elif cit1 == 1:
-            url = 'https://www.hackathon.com/city/' + country + '/' + city
-            fetcher1(url=url, chat_id=a)
-        time.sleep(1)
-
-sched.start()
-
-def getRow(card_holder):
-    title = ''
-    url = ''
-    title_holder = card_holder.find('a', {"class": "ht-eb-card__title"})
-    if title_holder is not None:
-        title = title_holder.text
-        url = title_holder['href']
-    start_card = card_holder.find('div', {"class": "date date--start idea-ht-calendar-light"})
-    start_date = ''
-    if start_card is not None:
-        for components in start_card:
-            start_date = start_date + components.text + ' '
-    end_card = card_holder.find('div', {"class": "date date--end idea-ht-calendar-light"})
-    end_date = ''
-    if end_card is not None:
-        for components in end_card:
-            end_date = end_date + components.text + ' '
-    tags_holder = card_holder.find('div', {"class": "ht-card-tags"})
-    tags = ''
-    if tags_holder is not None:
-        for tag in tags_holder:
-            tags = tags + tag.text + ' '
-    description = ''
-    description_holder = card_holder.find('div', {"class": "ht-eb-card__description"})
-    if not description_holder is None:
-        description = description_holder.text
-    location = ''
-    location_holder = card_holder.find('span', {"class": "ht-eb-card__location__place"})
-    if not location_holder is None:
-        location = location_holder.text
-    prize_title = ''
-    prize_name = ''
-    prize_holder = card_holder.find('div', {"class": "ht-eb-card__prize__container"})
-    if prize_holder is not None:
-        prize_title_holder = prize_holder.find('div', {"class", "ht-eb-card__prize__title"})
-        if prize_title_holder is not None:
-            prize_title = prize_title_holder.text
-        prize_name_holder = prize_holder.find('div', {"class", "ht-eb-card__prize__name"})
-        if prize_name_holder is not None:
-            prize_name = prize_name_holder.text
-    return [title, description, url, location, start_date,end_date,tags, prize_title, prize_name]
-
-def fetcher1(url,chat_id):
-    bot=Bot(TOKEN)
-    try:
-        gcontext = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-        url1 = urllib.request.Request(url=url,
-                                      headers={'Content-Type': 'application/json', 'User-agent': 'Mozilla/5.0'})
-        rawData = urllib.request.urlopen(url=url1, context=gcontext).read().decode('utf-8')
-        soup = bs.BeautifulSoup(rawData, 'html5lib')
-        to_send = []
-        index = 1
-        for card_holder in soup.findAll('div', {"class": "small-12 medium-6 large-12 column"}):
-            formatted_row = format_message_row(getRow(card_holder)
-                , index)
-            to_send.append(formatted_row)
-            index = index + 1
-        if len(to_send) == 0:
-            return
-        else:
-            paginate_and_send1(bot,to_send,chat_id)
-    except:
-        return
 
 
-def paginate_and_send1(bot,to_send,chat_id):
-    try:
-        tot_len = 0
-        message = ''
-        for row in to_send:
-            if tot_len >= 2500:
-                bot.send_message(text=message, chat_id=chat_id, disable_web_page_preview=True)
-                tot_len = 0
-                message = ''
-            message = message + row['text']
-            tot_len = tot_len + row['length']
-        if message != '':
-            bot.send_message(text=message, chat_id=chat_id, disable_web_page_preview=True)
-    except Unauthorized:
-        conn = sqlite3.connect(mount_point+'hk_bot.db')
-        c = conn.cursor()
-        c.execute("DELETE FROM subscribers WHERE id = (?)", (chat_id,))
-        conn.commit()
-        c.close()
-        conn.close()
 
+# START OF CONVERSATION HANDLER TO SET LOCATION
 @timeouts.wrapper
 def set_location(bot,update,user_data,args):
     location_key = KeyboardButton(text="send location", request_location=True)
@@ -319,6 +388,10 @@ def recieve_set_loc(bot,update,user_data):
                 if components['types'] == ['country', 'political']:
                     country = str(components['long_name']).lower()
                     break
+            if country is not None:
+                country=country.replace(' ','-')
+            if city is not None:
+                city=city.replace(' ','-')
             conn = sqlite3.connect(mount_point+'hk_bot.db')
             c = conn.cursor()
             c.execute("INSERT OR IGNORE INTO location (id,country,city) VALUES (?,?,?)",
@@ -344,13 +417,13 @@ def recieve_set_loc(bot,update,user_data):
         return ConversationHandler.END
 
 def set_country(bot,update,user_data):
-    country = update.message.text.lower()
+    country = update.message.text.lower().replace(' ','-')
     user_data['country'] = country
     update.message.reply_text('Send the name of your city', reply_markup=ForceReply(True))
     return SET_CITY
 
 def set_city(bot,update,user_data):
-    city = update.message.text.lower()
+    city = update.message.text.lower().replace(' ','-')
     user_data['city'] = city
     country = user_data['country']
     conn = sqlite3.connect(mount_point+'hk_bot.db')
@@ -367,7 +440,10 @@ def set_city(bot,update,user_data):
     conn.close()
     update.message.reply_text('Location set\nCountry=' + country + "\nCity=" + city)
     return ConversationHandler.END
+# END OF CONVERSATION HANDLER TO SET LOCATION
 
+
+# START OF CONVERSATION HANDLER FOR GETTING UPCOMING HACKATHONS
 @timeouts.wrapper
 def upcoming_menu1(bot,update,user_data,args):
     conn=sqlite3.connect(mount_point+'hk_bot.db')
@@ -395,6 +471,21 @@ def upcoming_menu1(bot,update,user_data,args):
         update.message.reply_text('Get a list of first 10 upcoming hackathons in your', reply_markup=reply_markup)
         return UPCM_2
 
+def upcoming_menu2(bot,update,user_data):
+    query=update.callback_query
+    val=query.data
+    if val == 'country3':
+        url = 'https://www.hackathon.com/country/'+user_data['country']
+        bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
+        fetcher(url,bot,query)
+    elif val=='city3':
+        url = 'https://www.hackathon.com/city/'+user_data['country']+'/'+user_data['city']
+        bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
+        fetcher(url, bot, query)
+    user_data.clear()
+    return ConversationHandler.END
+
+
 def recieve_location(bot,update,user_data):
     location=update.message.location
     if location is not None:
@@ -409,6 +500,10 @@ def recieve_location(bot,update,user_data):
                 if components['types'] == ['country', 'political']:
                     country = str(components['long_name']).lower()
                     break
+            if country is not None:
+                country=country.replace(' ','-')
+            if city is not None:
+                city=city.replace(' ','-')
             conn = sqlite3.connect(mount_point+'hk_bot.db')
             c = conn.cursor()
             c.execute("INSERT OR IGNORE INTO location (id,country,city) VALUES (?,?,?)",
@@ -438,14 +533,17 @@ def recieve_location(bot,update,user_data):
             return GET_COUNTRY
         return ConversationHandler.END
 
+
+
 def get_country(bot,update,user_data):
-    country=update.message.text.lower()
+    country=update.message.text.lower().replace(' ','-')
     user_data['country']=country
     update.message.reply_text('Send the name of your city', reply_markup=ForceReply(True))
     return GET_CITY
 
+
 def get_city(bot,update,user_data):
-    city=update.message.text.lower()
+    city=update.message.text.lower().replace(' ','-')
     user_data['city']=city
     country=user_data['country']
     conn = sqlite3.connect(mount_point+'hk_bot.db')
@@ -465,72 +563,10 @@ def get_city(bot,update,user_data):
     update.message.reply_text('Get a list of first 10 upcoming hackathons in your', reply_markup=reply_markup)
     return UPCM_2
 
-
-def upcoming_menu2(bot,update,user_data):
-    query=update.callback_query
-    val=query.data
-    if val == 'country3':
-        url = 'https://www.hackathon.com/country/'+user_data['country']
-        bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
-        fetcher(url,bot,query)
-    elif val=='city3':
-        url = 'https://www.hackathon.com/city/'+user_data['country']+'/'+user_data['city']
-        bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
-        fetcher(url, bot, query)
-    user_data.clear()
-    return ConversationHandler.END
+# END OF CONVERSATION HANDLER FOR GETTING UPCOMING HACKATHONS
 
 
-def fetcher(url,bot,query):
-    try:
-        gcontext = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-        url1 = urllib.request.Request(url=url,
-                                      headers={'Content-Type': 'application/json', 'User-agent': 'Mozilla/5.0'})
-        rawData = urllib.request.urlopen(url=url1, context=gcontext).read().decode('utf-8')
-        soup = bs.BeautifulSoup(rawData, 'html5lib')
-        to_send = []
-        index = 1
-        for card_holder in soup.findAll('div', {"class": "small-12 medium-6 large-12 column"}):
-            formatted_row = format_message_row(getRow(card_holder), index)
-            to_send.append(formatted_row)
-            index = index + 1
-        if len(to_send) == 0:
-            bot.edit_message_text(text="Sorry I could not find any hackathons", chat_id=query.message.chat_id,
-                                  message_id=query.message.message_id)
-        else:
-            paginate_and_send(bot, query, to_send)
-    except:
-        bot.edit_message_text(text="Sorry I could not find any hackathons", chat_id=query.message.chat_id,
-                              message_id=query.message.message_id)
 
-def paginate_and_send(bot,query,to_send):
-    first=True
-    tot_len=0
-    message=''
-    for row in to_send:
-        if tot_len>=2500:
-            if first:
-                bot.edit_message_text(text=message,chat_id=query.message.chat_id,message_id=query.message.message_id,disable_web_page_preview=True)
-                first=False
-            else:
-                bot.send_message(text=message,chat_id=query.message.chat_id,disable_web_page_preview=True)
-            tot_len=0
-            message=''
-        message=message+row['text']
-        tot_len=tot_len+row['length']
-    if message !='':
-        if first:
-            bot.edit_message_text(text=message, chat_id=query.message.chat_id, message_id=query.message.message_id,disable_web_page_preview=True)
-        else:
-            bot.send_message(text=message, chat_id=query.message.chat_id,disable_web_page_preview=True)
-
-
-def format_message_row(row_list,index):
-    row=''
-    for item in row_list:
-        if not item=='':
-            row=row+item+"\n"
-    return {'text':str(index)+'. '+row+'\n','length':len(str(index)+'. '+row+'\n')}
 
 @timeouts.wrapper
 def start(bot, update,user_data,args):
