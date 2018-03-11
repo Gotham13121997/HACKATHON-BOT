@@ -67,4 +67,20 @@ when you want to rebuild your project
 * Go back to deployment configuration and add storage with same mount point as previous and wait for a new deployment
 * After deployment finishes, go to deployments. Select latest and scale the pod to 1.  
 
-* **YOU CAN REMOVE YOUR GITHUB REPOSITORY BUT MAKE SURE TO RECREATE IT WHEN REBUILDING YOUR PROJECT**
+* **YOU CAN REMOVE YOUR GITHUB REPOSITORY BUT MAKE SURE TO RECREATE IT WHEN REBUILDING YOUR PROJECT**  
+
+## COMMANDS
+### PUBLIC COMMANDS
+* /help - get a list of all the commands
+* /upcoming - get a list of upcoming hackathons  
+![alt text](https://github.com/Gotham13121997/HACKATHON-BOT/blob/master/gifs/upcoming.gif)  
+* /set_location - set your location  
+![alt text](https://github.com/Gotham13121997/HACKATHON-BOT/blob/master/gifs/set_location.gif)  
+* /subscribe - subscribe to get a list of upcoming hackathons every week  
+![alt text](https://github.com/Gotham13121997/HACKATHON-BOT/blob/master/gifs/subscribe.gif)  
+* /unsubscribe - unsubscribe from the above  
+
+### ADMIN COMMANDS
+* /givememydb - get the sqlite database
+* /senddb - send and replace sqlite database
+* /broadcast - send message to all users of bot  
